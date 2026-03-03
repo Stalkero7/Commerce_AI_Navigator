@@ -1,159 +1,185 @@
 // =====================================================
-// POPUP.JS OPTIMIZADO V3
-// IA PREGUNTA PRIMERO (SIN SCRAPER)
-// SCRAPER SOLO PROCESA LO NECESARIO
+// POPUP.JS - Commerce AI Navigator
+// Locale-aware chat with product card rendering
 // =====================================================
 
-const chatDiv = document.getElementById('chat');
-const entrada = document.getElementById('entrada');
-const botonEnviar = document.getElementById('enviar');
-const configModal = document.getElementById('configModal');
-const configBtn = document.getElementById('configBtn');
-const apiKeyInput = document.getElementById('apiKeyInput');
-const saveBtn = document.getElementById('saveBtn');
-const deleteBtn = document.getElementById('deleteBtn');
-const cancelBtn = document.getElementById('cancelBtn');
-const apiStatus = document.getElementById('apiStatus');
+const chatDiv       = document.getElementById('chat');
+const inputField    = document.getElementById('entrada');
+const sendBtn       = document.getElementById('enviar');
+const configModal   = document.getElementById('configModal');
+const configBtn     = document.getElementById('configBtn');
+const apiKeyInput   = document.getElementById('apiKeyInput');
+const saveBtn       = document.getElementById('saveBtn');
+const deleteBtn     = document.getElementById('deleteBtn');
+const cancelBtn     = document.getElementById('cancelBtn');
+const apiStatus     = document.getElementById('apiStatus');
 
 let OPENAI_API_KEY = '';
-let estadoConversacion = {
-    paso: 'inicio', // inicio, esperando_categoria, esperando_detalles, procesando
-    busquedaInicial: '',
-    categoria: '',
-    contexto: '',
-    productos: [],
-    paginaActual: ''
+
+// Conversation state machine
+let conversation = {
+    step: 'idle',   // idle | awaiting_category | awaiting_details
+    query: '',
+    category: '',
+    context: '',
+    lang: 'English' // human-readable language name derived from browser locale
 };
 
 // =====================================================
-// FUNCIONES DE CONFIGURACIÓN
+// LOCALE DETECTION
+// Reads navigator.language (e.g. "es-CL", "en-US")
+// and maps it to a language name injected into every
+// AI prompt. The first welcome message uses this locale;
+// all subsequent replies follow whatever the user types.
 // =====================================================
 
-function cargarAPIKey() {
+const LOCALE_MAP = {
+    es: 'Spanish',  en: 'English',  pt: 'Portuguese',
+    fr: 'French',   de: 'German',   it: 'Italian',
+    zh: 'Chinese',  ja: 'Japanese', ko: 'Korean',
+    ar: 'Arabic',   ru: 'Russian',  nl: 'Dutch',
+    pl: 'Polish',   tr: 'Turkish',  hi: 'Hindi'
+};
+
+function detectLocale() {
+    const raw = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    const tag = raw.split('-')[0];
+    return LOCALE_MAP[tag] || 'English';
+}
+
+// =====================================================
+// WELCOME MESSAGES PER LANGUAGE
+// =====================================================
+
+const WELCOME = {
+    Spanish:    '👋 ¡Hola! Escribe qué producto buscas y exploraré la página para darte las mejores recomendaciones.',
+    English:    "👋 Hi! Tell me what product you're looking for and I'll scan this page to find the best options for you.",
+    Portuguese: '👋 Olá! Diga-me o que você está procurando e vou analisar a página para as melhores recomendações.',
+    French:     "👋 Bonjour ! Dites-moi quel produit vous cherchez et j'analyserai cette page pour vous.",
+    German:     '👋 Hallo! Sagen Sie mir, wonach Sie suchen, und ich durchsuche diese Seite für Sie.',
+    Italian:    '👋 Ciao! Dimmi cosa stai cercando e analizzerò questa pagina per te.',
+    Chinese:    '👋 你好！告诉我您在寻找什么产品，我将扫描此页面为您提供最佳建议。',
+    Japanese:   '👋 こんにちは！探している商品を教えていただければ、このページをスキャンして最適な商品をご提案します。',
+    Korean:     '👋 안녕하세요! 찾으시는 상품을 알려주시면 이 페이지에서 최적의 상품을 찾아드리겠습니다。',
+    Arabic:     '👋 مرحباً! أخبرني بما تبحث عنه وسأقوم بمسح هذه الصفحة لإيجاد أفضل التوصيات.',
+    Russian:    '👋 Привет! Скажите мне, что вы ищете, и я просмотрю эту страницу для лучших рекомендаций.',
+    Dutch:      '👋 Hallo! Vertel me wat je zoekt en ik scan deze pagina voor de beste aanbevelingen.',
+    Polish:     '👋 Cześć! Powiedz mi, czego szukasz, a przeskanuję tę stronę w poszukiwaniu najlepszych rekomendacji.',
+    Turkish:    '👋 Merhaba! Ne aradığınızı söyleyin, bu sayfayı sizin için en iyi önerileri bulmak üzere tarayacağım.',
+    Hindi:      '👋 नमस्ते! मुझे बताएं आप क्या खोज रहे हैं और मैं इस पेज को स्कैन करके आपके लिए सर्वोत्तम सुझाव दूंगा।'
+};
+
+function getWelcomeMessage(lang) {
+    return WELCOME[lang] || WELCOME['English'];
+}
+
+// =====================================================
+// API KEY MANAGEMENT
+// =====================================================
+
+function loadApiKey() {
     chrome.storage.local.get(['openai_api_key'], (result) => {
         if (result.openai_api_key) {
             OPENAI_API_KEY = result.openai_api_key;
-            console.log('✅ API Key cargada');
-            actualizarEstadoAPI(true);
+            console.log('✅ API key loaded');
+            setApiStatus(true);
         } else {
             OPENAI_API_KEY = '';
-            actualizarEstadoAPI(false);
+            setApiStatus(false);
         }
     });
 }
 
-function actualizarEstadoAPI(configurada) {
-    if (configurada) {
+function setApiStatus(configured) {
+    if (configured) {
         apiStatus.className = 'api-status configured';
-        apiStatus.textContent = '✅ API Key configurada';
+        apiStatus.textContent = '✅ API Key configured';
     } else {
         apiStatus.className = 'api-status not-configured';
-        apiStatus.textContent = '❌ API Key no configurada';
+        apiStatus.textContent = '❌ API Key not configured';
     }
 }
 
-function guardarAPIKey() {
-    const apiKey = apiKeyInput.value.trim();
-    
-    if (!apiKey) {
-        alert('Por favor ingresa tu API Key');
-        return;
-    }
-    
-    if (!apiKey.startsWith('sk-')) {
-        alert('La API Key debe empezar con "sk-"');
-        return;
-    }
-    
-    chrome.storage.local.set({ 'openai_api_key': apiKey }, () => {
-        OPENAI_API_KEY = apiKey;
+function saveApiKey() {
+    const key = apiKeyInput.value.trim();
+    if (!key)                    { alert('Please enter your API Key'); return; }
+    if (!key.startsWith('sk-')) { alert('API Key must start with "sk-"'); return; }
+
+    chrome.storage.local.set({ openai_api_key: key }, () => {
+        OPENAI_API_KEY = key;
         configModal.classList.remove('active');
         apiKeyInput.value = '';
-        actualizarEstadoAPI(true);
-        agregarMensaje('✅ API Key guardada correctamente', false);
+        setApiStatus(true);
+        addMessage('✅ API Key saved successfully.');
     });
 }
 
-function eliminarAPIKey() {
-    const confirmacion = confirm('¿Estás seguro de que deseas eliminar tu API Key?');
-    
-    if (confirmacion) {
-        chrome.storage.local.remove(['openai_api_key'], () => {
-            OPENAI_API_KEY = '';
-            configModal.classList.remove('active');
-            apiKeyInput.value = '';
-            actualizarEstadoAPI(false);
-            agregarMensaje('❌ API Key eliminada correctamente.', false);
-        });
-    }
+function removeApiKey() {
+    if (!confirm('Are you sure you want to remove your API Key?')) return;
+    chrome.storage.local.remove(['openai_api_key'], () => {
+        OPENAI_API_KEY = '';
+        configModal.classList.remove('active');
+        apiKeyInput.value = '';
+        setApiStatus(false);
+        addMessage('🗑️ API Key removed.');
+    });
 }
 
-configBtn.addEventListener('click', () => {
-    configModal.classList.add('active');
-});
-
-cancelBtn.addEventListener('click', () => {
-    configModal.classList.remove('active');
-    apiKeyInput.value = '';
-});
-
-saveBtn.addEventListener('click', guardarAPIKey);
-deleteBtn.addEventListener('click', eliminarAPIKey);
-
-apiKeyInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        guardarAPIKey();
-    }
-});
+configBtn.addEventListener('click', () => configModal.classList.add('active'));
+cancelBtn.addEventListener('click', () => { configModal.classList.remove('active'); apiKeyInput.value = ''; });
+saveBtn.addEventListener('click', saveApiKey);
+deleteBtn.addEventListener('click', removeApiKey);
+apiKeyInput.addEventListener('keypress', e => { if (e.key === 'Enter') saveApiKey(); });
 
 // =====================================================
-// FUNCIONES DEL CHAT
+// CHAT RENDERING
 // =====================================================
 
-function agregarMensaje(texto, esUsuario = false) {
+function addMessage(text, isUser = false) {
     const div = document.createElement('div');
-    div.className = `mensaje ${esUsuario ? 'usuario' : 'ia'}`;
-    div.textContent = texto;
+    div.className = `mensaje ${isUser ? 'usuario' : 'ia'}`;
+    div.textContent = text;
     chatDiv.appendChild(div);
     chatDiv.scrollTop = chatDiv.scrollHeight;
 }
 
-function agregarRespuestaConProductos(recomendacion, productosOriginales) {
-    // Contenedor principal del mensaje IA
+function renderProductCards(recommendation, originalProducts) {
     const wrapper = document.createElement('div');
     wrapper.className = 'mensaje ia';
 
-    // Texto de la recomendación
-    const textoDiv = document.createElement('div');
-    textoDiv.className = 'recomendacion-texto';
-    textoDiv.textContent = recomendacion.texto || '';
-    wrapper.appendChild(textoDiv);
+    // AI analysis text
+    if (recommendation.texto) {
+        const textDiv = document.createElement('div');
+        textDiv.className = 'recomendacion-texto';
+        textDiv.textContent = recommendation.texto;
+        wrapper.appendChild(textDiv);
+    }
 
-    // Tarjetas de productos
-    if (recomendacion.productos && recomendacion.productos.length > 0) {
+    // Product cards grid
+    if (recommendation.productos && recommendation.productos.length > 0) {
         const grid = document.createElement('div');
         grid.className = 'productos-grid';
 
-        recomendacion.productos.forEach((item) => {
-            // Buscar el producto original por índice o nombre
-            const original = productosOriginales[item.indice] || 
-                productosOriginales.find(p => p.nombre === item.nombre) || {};
+        recommendation.productos.forEach((item) => {
+            // Match back to the scraped product by index or name
+            const original = originalProducts[item.indice] ||
+                originalProducts.find(p => p.nombre === item.nombre) || {};
 
-            const enlace = original.enlace || item.enlace || '';
-            const imagen = original.imagen || '';
-            const precio = original.precio || item.precio || '';
-            const nombre = item.nombre || original.nombre || '';
+            const link  = original.enlace || item.enlace || '';
+            const image = original.imagen || '';
+            const price = original.precio || item.precio || '';
+            const name  = item.nombre   || original.nombre || '';
 
             const card = document.createElement('div');
             card.className = 'producto-card';
 
-            // Imagen
+            // Thumbnail
             const imgWrap = document.createElement('div');
             imgWrap.className = 'producto-img-wrap';
-            if (imagen) {
+            if (image) {
                 const img = document.createElement('img');
-                img.src = imagen;
-                img.alt = nombre;
+                img.src   = image;
+                img.alt   = name;
                 img.className = 'producto-img';
                 img.onerror = () => { imgWrap.innerHTML = '<div class="producto-img-placeholder">🛍️</div>'; };
                 imgWrap.appendChild(img);
@@ -162,36 +188,36 @@ function agregarRespuestaConProductos(recomendacion, productosOriginales) {
             }
             card.appendChild(imgWrap);
 
-            // Info
+            // Details
             const info = document.createElement('div');
             info.className = 'producto-info';
 
-            const nombreEl = document.createElement('p');
-            nombreEl.className = 'producto-nombre';
-            nombreEl.textContent = nombre.length > 60 ? nombre.substring(0, 57) + '...' : nombre;
-            info.appendChild(nombreEl);
+            const nameEl = document.createElement('p');
+            nameEl.className = 'producto-nombre';
+            nameEl.textContent = name.length > 60 ? name.substring(0, 57) + '...' : name;
+            info.appendChild(nameEl);
 
             if (item.razon) {
-                const razonEl = document.createElement('p');
-                razonEl.className = 'producto-razon';
-                razonEl.textContent = item.razon;
-                info.appendChild(razonEl);
+                const reasonEl = document.createElement('p');
+                reasonEl.className = 'producto-razon';
+                reasonEl.textContent = item.razon;
+                info.appendChild(reasonEl);
             }
 
-            if (precio && precio !== 'No especificado') {
-                const precioEl = document.createElement('p');
-                precioEl.className = 'producto-precio';
-                precioEl.textContent = precio;
-                info.appendChild(precioEl);
+            if (price && price !== 'No especificado' && price !== 'Not specified') {
+                const priceEl = document.createElement('p');
+                priceEl.className = 'producto-precio';
+                priceEl.textContent = price;
+                info.appendChild(priceEl);
             }
 
-            if (enlace) {
+            if (link) {
                 const btn = document.createElement('a');
-                btn.href = enlace;
+                btn.href   = link;
                 btn.target = '_blank';
-                btn.rel = 'noopener noreferrer';
-                btn.className = 'producto-btn';
-                btn.textContent = 'Ver producto →';
+                btn.rel    = 'noopener noreferrer';
+                btn.className  = 'producto-btn';
+                btn.textContent = 'View product →';
                 info.appendChild(btn);
             }
 
@@ -206,450 +232,314 @@ function agregarRespuestaConProductos(recomendacion, productosOriginales) {
     chatDiv.scrollTop = chatDiv.scrollHeight;
 }
 
-function agregarCargando() {
+function showLoading() {
     const div = document.createElement('div');
     div.className = 'mensaje ia';
+    div.id = 'loading';
     div.innerHTML = '<div class="cargando"><div class="punto"></div><div class="punto"></div><div class="punto"></div></div>';
-    div.id = 'cargando';
     chatDiv.appendChild(div);
     chatDiv.scrollTop = chatDiv.scrollHeight;
 }
 
-function removerCargando() {
-    const element = document.getElementById('cargando');
-    if (element) {
-        element.remove();
-    }
+function hideLoading() {
+    const el = document.getElementById('loading');
+    if (el) el.remove();
 }
 
 // =====================================================
-// DETECTAR BÚSQUEDA VAGA
+// QUERY ANALYSIS
 // =====================================================
 
-function esSearchMuyVago(busqueda) {
-    const palabrasVagas = [
-        'regalo', 'producto', 'cosa', 'item', 'comprar',
-        'algo', 'busco', 'necesito', 'quiero', 'ayuda'
+function isVagueQuery(query) {
+    // Common vague terms across Spanish, English, French, Portuguese, German
+    const vagueTerms = [
+        'gift', 'product', 'thing', 'item', 'buy', 'something', 'help', 'need', 'want',
+        'regalo', 'producto', 'cosa', 'comprar', 'algo', 'busco', 'necesito', 'quiero',
+        'cadeau', 'acheter', 'geschenk', 'kaufen', 'presente', 'coisa'
     ];
-    
-    const palabras = busqueda.split(' ');
-    const palabrasSignificativas = palabras.filter(p => 
-        p.length > 4 && 
-        !['para', 'que', 'este', 'cual', 'cual'].includes(p.toLowerCase())
+    const words = query.toLowerCase().split(' ');
+    const meaningful = words.filter(w =>
+        w.length > 4 &&
+        !['para', 'that', 'this', 'what', 'with', 'from', 'pour', 'avec', 'para', 'sobre'].includes(w)
     );
-    
-    // Menos de 3 palabras significativas = vago
-    return palabrasSignificativas.length < 3;
+    return meaningful.length < 3;
+}
+
+function extractKeywords(text) {
+    const stopWords = [
+        'el', 'la', 'de', 'que', 'y', 'o', 'es', 'en', 'por', 'para',
+        'the', 'and', 'for', 'with', 'from', 'that', 'this', 'are', 'have',
+        'le', 'les', 'des', 'une', 'pour', 'avec'
+    ];
+    return text.toLowerCase().split(' ')
+        .filter(w => w.length > 3 && !stopWords.includes(w))
+        .slice(0, 5)
+        .join(' ');
 }
 
 // =====================================================
-// OBTENER CATEGORÍAS SUGERIDAS DE IA
+// OPENAI API CALLS
+// Every prompt explicitly states the user's language so
+// the model always replies in the right locale.
 // =====================================================
 
-async function obtenerCategoriasDeIA(busqueda) {
-    if (!OPENAI_API_KEY) {
-        return null;
-    }
-    
-    const prompt = `El usuario está buscando: "${busqueda}"
+async function getSuggestedCategories(query) {
+    if (!OPENAI_API_KEY) return null;
 
-Sugiere MÁXIMO 3 categorías de productos que podrían ser relevantes.
+    const prompt =
+`The user is searching for: "${query}"
+Their preferred language is: ${conversation.lang}
 
-Responde SOLO con las categorías, una por línea, SIN números ni explicaciones.
-
-Ejemplos:
-Electrónica
-Ropa y accesorios
-Deportes`;
+Suggest UP TO 3 relevant product categories.
+Reply in ${conversation.lang}.
+Respond ONLY with the category names, one per line, NO numbers or explanations.`;
 
     try {
-        const respuesta = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.7,
-                max_tokens: 100
-            })
-        });
-
-        const datos = await respuesta.json();
-        
-        if (datos.error) {
-            return null;
-        }
-        
-        const categorias = datos.choices[0].message.content
-            .split('\n')
-            .map(c => c.trim())
-            .filter(c => c.length > 0 && !c.match(/^\d+\./))
-            .slice(0, 3);
-        
-        return categorias;
-    } catch (error) {
-        console.error('Error obteniendo categorías:', error);
+        const res = await callOpenAI(prompt, 100, 0.7);
+        if (!res) return null;
+        return res.split('\n').map(c => c.trim()).filter(c => c.length > 0 && !/^\d+\./.test(c)).slice(0, 3);
+    } catch (e) {
+        console.error('Error fetching categories:', e);
         return null;
     }
 }
 
-// =====================================================
-// OBTENER PREGUNTAS ADICIONALES DE IA
-// =====================================================
+async function getClarifyingQuestions(query, category) {
+    if (!OPENAI_API_KEY) return null;
 
-async function obtenerPreguntasDeIA(busqueda, categoria) {
-    if (!OPENAI_API_KEY) {
-        return null;
-    }
-    
-    const prompt = `El usuario está buscando: "${busqueda}"
-Ha elegido la categoría: "${categoria}"
+    const prompt =
+`The user is searching for: "${query}"
+They selected the category: "${category}"
+Their preferred language is: ${conversation.lang}
 
-Haz MÁXIMO 2 preguntas específicas para obtener más contexto.
-Estas preguntas deben ser sobre: presupuesto, edad, marca, características especiales, etc.
-
-Responde SOLO con las preguntas, una por línea.`;
+Ask UP TO 2 specific follow-up questions to refine the search (budget, age, brand, special features, etc.).
+Reply in ${conversation.lang}.
+Respond ONLY with the questions, one per line.`;
 
     try {
-        const respuesta = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.7,
-                max_tokens: 150
-            })
-        });
-
-        const datos = await respuesta.json();
-        
-        if (datos.error) {
-            return null;
-        }
-        
-        const preguntas = datos.choices[0].message.content
-            .split('\n')
-            .filter(p => p.trim().length > 5);
-        
-        return preguntas;
-    } catch (error) {
-        console.error('Error obteniendo preguntas:', error);
+        const res = await callOpenAI(prompt, 150, 0.7);
+        if (!res) return null;
+        return res.split('\n').filter(q => q.trim().length > 5);
+    } catch (e) {
+        console.error('Error fetching clarifying questions:', e);
         return null;
     }
 }
 
-// =====================================================
-// ENVIAR A OPENAI CON CONTEXTO REDUCIDO
-// =====================================================
+async function getRecommendations(query, category, context, products) {
+    if (!OPENAI_API_KEY) return null;
 
-async function enviarAOpenAI(busqueda, categoria, contexto, productos) {
-    if (!OPENAI_API_KEY) {
-        return null;
-    }
-
-    const listaProductos = productos.map((p, i) =>
-        `${i}. "${p.nombre}" | Precio: ${p.precio}`
+    const productList = products.map((p, i) =>
+        `${i}. "${p.nombre}" | Price: ${p.precio}`
     ).join('\n');
 
-    const prompt = `Eres un experto asesor de compras. Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni backticks.
+    const prompt =
+`You are an expert shopping advisor.
+Respond ONLY with a valid JSON object — no extra text, no markdown backticks.
 
-BÚSQUEDA: "${busqueda}"
-CATEGORÍA: "${categoria || 'General'}"${contexto ? `\nCONTEXTO: ${contexto}` : ''}
+SEARCH: "${query}"
+CATEGORY: "${category || 'General'}"${context ? `\nCONTEXT: ${context}` : ''}
+USER LANGUAGE: ${conversation.lang}
 
-PRODUCTOS DISPONIBLES (índice. nombre | precio):
-${listaProductos || 'Sin productos scrapeados'}
+AVAILABLE PRODUCTS (index. name | price):
+${productList || 'No products scraped from this page'}
 
-Devuelve este JSON exacto:
+Return this exact JSON:
 {
-  "texto": "Breve análisis de 2-3 frases en español explicando tus recomendaciones",
+  "texto": "2–3 sentence analysis written in ${conversation.lang}",
   "productos": [
     {
-      "indice": <número del índice>,
-      "nombre": "<nombre del producto>",
-      "precio": "<precio>",
-      "razon": "<razón corta de 1 frase por qué recomendarlo>"
+      "indice": <product index number>,
+      "nombre": "<product name>",
+      "precio": "<price>",
+      "razon": "<one sentence in ${conversation.lang} explaining why this product fits the search>"
     }
   ]
 }
 
-Elige los 4 productos MÁS RELEVANTES. Si hay menos, incluye todos. Si no hay productos scrapeados, devuelve productos: [].`;
+Choose the 4 MOST RELEVANT products. If fewer are available, include them all. If no products were scraped, return productos: [].`;
 
     try {
-        console.log('📤 Enviando a OpenAI...');
-
-        const respuesta = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3,
-                max_tokens: 1024
-            })
-        });
-
-        const datos = await respuesta.json();
-
-        if (datos.error) {
-            agregarMensaje(`❌ Error OpenAI: ${datos.error.message}`, false);
-            return null;
-        }
-
-        const raw = datos.choices[0].message.content.trim();
-        console.log('✅ Respuesta recibida');
-
-        // Limpiar posibles backticks que el modelo incluya a veces
+        const raw = await callOpenAI(prompt, 1024, 0.3);
+        if (!raw) return null;
         const clean = raw.replace(/^```json|^```|```$/g, '').trim();
         return JSON.parse(clean);
-    } catch (error) {
-        console.error('Error:', error);
-        agregarMensaje(`❌ Error: ${error.message}`, false);
+    } catch (e) {
+        console.error('Error parsing AI recommendation:', e);
+        addMessage('❌ Could not parse the AI response. Please try again.');
         return null;
     }
 }
 
+// Shared OpenAI fetch helper
+async function callOpenAI(prompt, maxTokens = 512, temperature = 0.5) {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: prompt }],
+            temperature,
+            max_tokens: maxTokens
+        })
+    });
+
+    const data = await res.json();
+    if (data.error) { addMessage(`❌ OpenAI error: ${data.error.message}`); return null; }
+    return data.choices[0].message.content.trim();
+}
+
 // =====================================================
-// FLUJO PRINCIPAL OPTIMIZADO
+// MAIN CONVERSATION FLOW
 // =====================================================
 
-async function procesarInput() {
-    const input = entrada.value.trim();
-    
-    if (!input) {
-        alert('Por favor escribe algo');
-        return;
-    }
-    
-    agregarMensaje(input, true);
-    entrada.value = '';
-    botonEnviar.disabled = true;
-    
+async function handleInput() {
+    const input = inputField.value.trim();
+    if (!input) { alert('Please type something first.'); return; }
+
+    addMessage(input, true);
+    inputField.value   = '';
+    sendBtn.disabled   = true;
+
     try {
-        if (estadoConversacion.paso === 'inicio') {
-            // PRIMER MENSAJE
-            await procesarPrimeraMensaje(input);
-        } else if (estadoConversacion.paso === 'esperando_categoria') {
-            // USUARIO ELIGIÓ CATEGORÍA
-            await procesarSeleccionCategoria(input);
-        } else if (estadoConversacion.paso === 'esperando_detalles') {
-            // USUARIO RESPONDIÓ PREGUNTAS ADICIONALES
-            await procesarDetallesAdicionales(input);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        agregarMensaje(`❌ Error: ${error.message}`, false);
+        if      (conversation.step === 'idle')              await handleFirstMessage(input);
+        else if (conversation.step === 'awaiting_category') await handleCategorySelection(input);
+        else if (conversation.step === 'awaiting_details')  await handleAdditionalDetails(input);
+    } catch (err) {
+        console.error('Flow error:', err);
+        addMessage(`❌ Unexpected error: ${err.message}`);
     } finally {
-        botonEnviar.disabled = false;
+        sendBtn.disabled = false;
     }
 }
 
-// =====================================================
-// PASO 1: PRIMERA MENSAJE DEL USUARIO
-// =====================================================
+// Step 1 — First user message
+async function handleFirstMessage(query) {
+    conversation.query = query;
 
-async function procesarPrimeraMensaje(busqueda) {
-    estadoConversacion.busquedaInicial = busqueda;
-    
-    // Si búsqueda es específica, proceder directamente al scraping
-    if (!esSearchMuyVago(busqueda)) {
-        console.log('✅ Búsqueda específica, obteniendo productos...');
-        await obtenerProductosYRecomendar(busqueda, '', '');
-        estadoConversacion.paso = 'inicio';
+    if (!isVagueQuery(query)) {
+        console.log('✅ Specific query — scraping now...');
+        await scrapeAndRecommend(query, '', '');
+        conversation.step = 'idle';
         return;
     }
-    
-    // Si búsqueda es vaga, pedir categoría
-    console.log('⚠️ Búsqueda vaga, pidiendo categoría...');
-    
-    agregarCargando();
-    
-    const categorias = await obtenerCategoriasDeIA(busqueda);
-    
-    removerCargando();
-    
-    if (categorias && categorias.length > 0) {
-        agregarMensaje(
-            '📂 Por favor, elige una categoría:\n\n' +
-            categorias.map((c, i) => `${i + 1}. ${c}`).join('\n'),
-            false
-        );
-        
-        estadoConversacion.paso = 'esperando_categoria';
+
+    console.log('⚠️ Vague query — requesting category...');
+    showLoading();
+    const categories = await getSuggestedCategories(query);
+    hideLoading();
+
+    if (categories && categories.length > 0) {
+        addMessage('📂 Please choose a category:\n\n' + categories.map((c, i) => `${i + 1}. ${c}`).join('\n'));
+        conversation.step = 'awaiting_category';
     } else {
-        // Sin categorías, proceder directamente
-        await obtenerProductosYRecomendar(busqueda, '', '');
-        estadoConversacion.paso = 'inicio';
+        await scrapeAndRecommend(query, '', '');
+        conversation.step = 'idle';
     }
 }
 
-// =====================================================
-// PASO 2: USUARIO ELIGE CATEGORÍA
-// =====================================================
+// Step 2 — User picks a category
+async function handleCategorySelection(input) {
+    conversation.category = input.trim();
+    console.log(`📂 Category: ${conversation.category}`);
 
-async function procesarSeleccionCategoria(respuesta) {
-    // Extraer número o texto de categoría
-    const categoria = respuesta.trim();
-    estadoConversacion.categoria = categoria;
-    
-    console.log(`📂 Categoría seleccionada: ${categoria}`);
-    
-    agregarCargando();
-    
-    // Obtener preguntas adicionales
-    const preguntas = await obtenerPreguntasDeIA(
-        estadoConversacion.busquedaInicial,
-        categoria
-    );
-    
-    removerCargando();
-    
-    if (preguntas && preguntas.length > 0) {
-        agregarMensaje(
-            '❓ Una última cosa. ' + preguntas.join('\n\n'),
-            false
-        );
-        estadoConversacion.paso = 'esperando_detalles';
+    showLoading();
+    const questions = await getClarifyingQuestions(conversation.query, conversation.category);
+    hideLoading();
+
+    if (questions && questions.length > 0) {
+        addMessage('❓ One last thing — \n\n' + questions.join('\n\n'));
+        conversation.step = 'awaiting_details';
     } else {
-        // Sin preguntas adicionales, proceder al scraping
-        console.log('📦 Buscando productos...');
-        await obtenerProductosYRecomendar(
-            estadoConversacion.busquedaInicial,
-            categoria,
-            ''
-        );
-        estadoConversacion.paso = 'inicio';
+        await scrapeAndRecommend(conversation.query, conversation.category, '');
+        conversation.step = 'idle';
     }
 }
 
-// =====================================================
-// PASO 3: USUARIO RESPONDE DETALLES ADICIONALES
-// =====================================================
-
-async function procesarDetallesAdicionales(respuesta) {
-    estadoConversacion.contexto = respuesta;
-    
-    console.log('📦 Buscando productos con contexto...');
-    
-    await obtenerProductosYRecomendar(
-        estadoConversacion.busquedaInicial,
-        estadoConversacion.categoria,
-        respuesta
-    );
-    
-    estadoConversacion.paso = 'inicio';
+// Step 3 — User answers follow-up questions
+async function handleAdditionalDetails(input) {
+    conversation.context = input;
+    console.log('📦 Searching with full context...');
+    await scrapeAndRecommend(conversation.query, conversation.category, input);
+    conversation.step = 'idle';
 }
 
 // =====================================================
-// OBTENER PRODUCTOS Y RECOMENDAR
+// SCRAPE + RECOMMEND
 // =====================================================
 
-async function obtenerProductosYRecomendar(busqueda, categoria, contexto) {
-    agregarCargando();
-    
+async function scrapeAndRecommend(query, category, context) {
+    showLoading();
+
     try {
-        // Obtener la pestaña activa
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabs  = await chrome.tabs.query({ active: true, currentWindow: true });
         const tabId = tabs[0].id;
-        const paginaActual = tabs[0].title;
-        
-        console.log(`🔍 Explorando: ${paginaActual}`);
-        
-        // Hacer scraping (ahora con contexto de categoría)
-        const respuesta = await chrome.tabs.sendMessage(tabId, {
+        console.log(`🔍 Scanning: ${tabs[0].title}`);
+
+        const response = await chrome.tabs.sendMessage(tabId, {
             action: 'extraerProductos',
-            categoria: categoria,
-            palabrasClave: extraerPalabrasClave(busqueda + ' ' + contexto)
+            category,
+            palabrasClave: extractKeywords(query + ' ' + context)
         });
-        
-        if (!respuesta.success) {
-            removerCargando();
-            agregarMensaje('❌ Error al acceder a la página. Intenta recargar (F5).', false);
+
+        if (!response.success) {
+            hideLoading();
+            addMessage('❌ Could not access the page. Try reloading it (F5).');
             return;
         }
-        
-        console.log(`📦 Productos encontrados: ${respuesta.productos.length}`);
-        
-        // Enviar a OpenAI con contexto reducido
-        const recomendacion = await enviarAOpenAI(
-            busqueda,
-            categoria,
-            contexto,
-            respuesta.productos
-        );
 
-        removerCargando();
+        console.log(`📦 Products found: ${response.productos.length}`);
+        const recommendation = await getRecommendations(query, category, context, response.productos);
+        hideLoading();
 
         if (!OPENAI_API_KEY) {
-            // Sin API Key: mostrar tarjetas igual, sin análisis de IA
-            agregarRespuestaConProductos(
-                { texto: `Se encontraron ${respuesta.productos.length} productos. Configura tu API Key para obtener recomendaciones personalizadas.`,
-                  productos: respuesta.productos.slice(0, 4).map((p, i) => ({ indice: i, nombre: p.nombre, precio: p.precio })) },
-                respuesta.productos
-            );
-        } else if (recomendacion) {
-            agregarRespuestaConProductos(recomendacion, respuesta.productos);
+            // No API key — show raw cards without AI analysis
+            renderProductCards({
+                texto: `Found ${response.productos.length} product(s). Set up your API Key for personalised AI recommendations.`,
+                productos: response.productos.slice(0, 4).map((p, i) => ({
+                    indice: i, nombre: p.nombre, precio: p.precio
+                }))
+            }, response.productos);
+        } else if (recommendation) {
+            renderProductCards(recommendation, response.productos);
         }
-        
-    } catch (error) {
-        removerCargando();
-        
-        console.error('Error:', error);
-        
-        if (error.message.includes('Could not establish connection')) {
-            agregarMensaje(
-                '❌ No pude acceder a la página.\n\n' +
-                'Soluciones:\n' +
-                '1. Recarga (F5)\n' +
-                '2. Asegúrate que no es página protegida (Gmail, Facebook)\n' +
-                '3. Intenta en modo normal (no incógnito)',
-                false
+
+    } catch (err) {
+        hideLoading();
+        console.error('Scrape error:', err);
+
+        if (err.message.includes('Could not establish connection')) {
+            addMessage(
+                '❌ Could not connect to the page.\n\n' +
+                'Try:\n' +
+                '1. Reload the tab (F5)\n' +
+                '2. Make sure it is not a protected page (Gmail, Chrome settings…)\n' +
+                '3. Use a regular (non-incognito) window'
             );
         } else {
-            agregarMensaje(`❌ Error: ${error.message}`, false);
+            addMessage(`❌ Error: ${err.message}`);
         }
     }
-}
-
-// =====================================================
-// FUNCIONES AUXILIARES
-// =====================================================
-
-function extraerPalabrasClave(texto) {
-    // Extraer palabras clave del búsqueda y contexto
-    const palabras = texto.toLowerCase().split(' ');
-    const stopWords = ['el', 'la', 'de', 'que', 'y', 'o', 'es', 'en', 'por', 'para'];
-    
-    return palabras
-        .filter(p => p.length > 3 && !stopWords.includes(p))
-        .slice(0, 5)
-        .join(' ');
 }
 
 // =====================================================
 // EVENT LISTENERS
 // =====================================================
 
-botonEnviar.addEventListener('click', procesarInput);
-
-entrada.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        procesarInput();
-    }
-});
+sendBtn.addEventListener('click', handleInput);
+inputField.addEventListener('keypress', e => { if (e.key === 'Enter') handleInput(); });
 
 // =====================================================
-// INICIALIZACIÓN
+// INITIALISATION
 // =====================================================
 
-console.log('🚀 Popup.js V3 cargado - Flujo optimizado');
-cargarAPIKey();
+console.log('🚀 Commerce AI Navigator — popup loaded');
+loadApiKey();
+
+// Detect locale → set language for AI prompts → show welcome message
+conversation.lang = detectLocale();
+console.log(`🌐 Detected language: ${conversation.lang}`);
+addMessage(getWelcomeMessage(conversation.lang));

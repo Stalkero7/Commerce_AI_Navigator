@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador IA</title>
+    <title>Commerce AI Navigator</title>
     <style>
         * {
             margin: 0;
@@ -385,11 +385,11 @@
 </head>
 <body>
     <div class="container">
-        <button class="config-btn" id="configBtn" title="Configurar API Key">⚙️</button>
+        <button class="config-btn" id="configBtn" title="Configure API Key">⚙️</button>
 
         <div class="header">
-            <h2>🔍 Buscador IA</h2>
-            <p>Busca productos inteligentemente</p>
+            <h2>🔍 Commerce AI Navigator</h2>
+            <p>Smart product search powered by AI</p>
         </div>
 
         <!-- Chat principal -->
@@ -404,17 +404,17 @@
             <input
                 type="text"
                 id="entrada"
-                placeholder="Ej: regalo para niña de 7 años..."
+                placeholder="e.g. gift for a 7-year-old girl..."
                 autocomplete="off"
             >
-            <button id="enviar">Enviar</button>
+            <button id="enviar">Send</button>
         </div>
     </div>
 
     <!-- Modal de configuración -->
     <div class="config-modal" id="configModal">
         <div class="config-content">
-            <h3>⚙️ Configurar API Key</h3>
+            <h3>⚙️ Configure API Key</h3>
             
             <div id="apiStatus" class="api-status not-configured">
                 ❌ API Key no configurada
@@ -427,12 +427,12 @@
                 placeholder="sk-..."
             >
             <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
-                Tu API key se guarda localmente en tu navegador (no se envía a servidores externos)
+                Your API key is stored locally in your browser and is never sent to any server other than OpenAI.
             </p>
             <div class="config-buttons">
-                <button id="saveBtn">Guardar</button>
-                <button id="deleteBtn" class="delete-btn">Eliminar</button>
-                <button id="cancelBtn" style="background: #ccc; color: #333;">Cancelar</button>
+                <button id="saveBtn">Save</button>
+                <button id="deleteBtn" class="delete-btn">Remove</button>
+                <button id="cancelBtn" style="background: #ccc; color: #333;">Cancel</button>
             </div>
         </div>
     </div>

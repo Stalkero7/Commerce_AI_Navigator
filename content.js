@@ -1,198 +1,144 @@
 // =====================================================
-// CONTENT.JS V4 - SCRAPER POR SITIO + DOM DINÁMICO
-// Soporta: Amazon, MercadoLibre, eBay, AliExpress
+// CONTENT.JS - Commerce AI Navigator
+// Site-aware scraper with dynamic DOM support
+// Supports: Amazon, MercadoLibre, eBay, AliExpress + generic fallback
 // =====================================================
 
-console.log('🚀 Content script V4 iniciando...');
+console.log('🚀 Content script loading...');
 
 // =====================================================
-// SELECTORES ESPECÍFICOS POR SITIO
+// SITE-SPECIFIC SELECTORS
+// Each entry defines how to locate product containers
+// and extract name, price, image and link on that site.
 // =====================================================
 
-const SITIOS = {
+const SITES = {
     amazon: {
-        detectar: () => /amazon\.(com|es|com\.mx|com\.br|co\.uk|de|fr|it|ca|com\.au)/.test(location.hostname),
-        contenedor: [
-            '[data-component-type="s-search-result"]',
-            '.s-result-item[data-asin]',
-            '.sg-col-inner .s-widget-container'
-        ],
-        nombre: ['h2 .a-link-normal span', 'h2 span.a-text-normal', '.a-size-medium.a-color-base'],
-        precio: ['.a-price .a-offscreen', '.a-price-whole', 'span.a-price'],
-        imagen: ['img.s-image', '.s-product-image-container img'],
-        enlace: ['h2 a.a-link-normal', 'a.a-link-normal[href*="/dp/"]'],
-        baseURL: () => `https://www.amazon.${location.hostname.split('.').slice(1).join('.')}`
+        detect:    () => /amazon\.(com|es|com\.mx|com\.br|co\.uk|de|fr|it|ca|com\.au)/.test(location.hostname),
+        container: ['[data-component-type="s-search-result"]', '.s-result-item[data-asin]', '.sg-col-inner .s-widget-container'],
+        name:      ['h2 .a-link-normal span', 'h2 span.a-text-normal', '.a-size-medium.a-color-base'],
+        price:     ['.a-price .a-offscreen', '.a-price-whole', 'span.a-price'],
+        image:     ['img.s-image', '.s-product-image-container img'],
+        link:      ['h2 a.a-link-normal', 'a.a-link-normal[href*="/dp/"]'],
+        baseURL:   () => `https://www.amazon.${location.hostname.split('.').slice(1).join('.')}`
     },
 
     mercadolibre: {
-        detectar: () => /mercadolibre\.|mercadopago\./.test(location.hostname),
-        contenedor: [
-            '.ui-search-result__wrapper',
-            '.andes-card.poly-card',
-            'li.ui-search-layout__item',
-            '.ui-search-result'
-        ],
-        nombre: [
-            '.poly-component__title',
-            '.ui-search-item__title',
-            'h3.ui-search-item__title',
-            'a.poly-component__title'
-        ],
-        precio: [
-            '.andes-money-amount__fraction',
-            '.price-tag-fraction',
-            '.ui-search-price__second-line .andes-money-amount__fraction',
-            'span.andes-money-amount'
-        ],
-        imagen: [
-            'img.poly-component__picture',
-            'img.ui-search-result-image__element',
-            '.ui-search-result-image img'
-        ],
-        enlace: ['a.poly-component__title', 'a.ui-search-link', '.ui-search-result__content a'],
-        baseURL: () => ''
+        detect:    () => /mercadolibre\.|mercadopago\./.test(location.hostname),
+        container: ['.ui-search-result__wrapper', '.andes-card.poly-card', 'li.ui-search-layout__item', '.ui-search-result'],
+        name:      ['.poly-component__title', '.ui-search-item__title', 'h3.ui-search-item__title', 'a.poly-component__title'],
+        price:     ['.andes-money-amount__fraction', '.price-tag-fraction', '.ui-search-price__second-line .andes-money-amount__fraction', 'span.andes-money-amount'],
+        image:     ['img.poly-component__picture', 'img.ui-search-result-image__element', '.ui-search-result-image img'],
+        link:      ['a.poly-component__title', 'a.ui-search-link', '.ui-search-result__content a'],
+        baseURL:   () => ''
     },
 
     ebay: {
-        detectar: () => /ebay\./.test(location.hostname),
-        contenedor: [
-            '.s-item:not(.s-item--placeholder)',
-            '.srp-results .s-item'
-        ],
-        nombre: ['.s-item__title', 'h3.s-item__title'],
-        precio: ['.s-item__price', '.notranslate'],
-        imagen: ['.s-item__image-img', 'img.s-item__image-img'],
-        enlace: ['.s-item__link', 'a.s-item__link'],
-        baseURL: () => ''
+        detect:    () => /ebay\./.test(location.hostname),
+        container: ['.s-item:not(.s-item--placeholder)', '.srp-results .s-item'],
+        name:      ['.s-item__title', 'h3.s-item__title'],
+        price:     ['.s-item__price', '.notranslate'],
+        image:     ['.s-item__image-img', 'img.s-item__image-img'],
+        link:      ['.s-item__link', 'a.s-item__link'],
+        baseURL:   () => ''
     },
 
     aliexpress: {
-        detectar: () => /aliexpress\./.test(location.hostname),
-        contenedor: [
-            'a.search-card-item',
-            '.list--gallery--C2f2tvm > div',
-            '[class*="search-card"]',
-            '[class*="SearchCards"]'
-        ],
-        nombre: [
-            'h3[class*="title"]',
-            '[class*="title--wFj3A"]',
-            'span[class*="title"]',
-            'a > div > div:first-child'
-        ],
-        precio: [
-            '[class*="price--"][class*="sale"]',
-            'div[class*="price"] strong',
-            '[class*="Manhattan--price"]'
-        ],
-        imagen: ['img[class*="images--item"]', 'img[src*="alicdn.com"]', 'img[lazy]'],
-        enlace: ['a.search-card-item', 'a[href*="/item/"]'],
-        baseURL: () => 'https://www.aliexpress.com'
+        detect:    () => /aliexpress\./.test(location.hostname),
+        container: ['a.search-card-item', '.list--gallery--C2f2tvm > div', '[class*="search-card"]', '[class*="SearchCards"]'],
+        name:      ['h3[class*="title"]', '[class*="title--wFj3A"]', 'span[class*="title"]', 'a > div > div:first-child'],
+        price:     ['[class*="price--"][class*="sale"]', 'div[class*="price"] strong', '[class*="Manhattan--price"]'],
+        image:     ['img[class*="images--item"]', 'img[src*="alicdn.com"]', 'img[lazy]'],
+        link:      ['a.search-card-item', 'a[href*="/item/"]'],
+        baseURL:   () => 'https://www.aliexpress.com'
     }
 };
 
 // =====================================================
-// DETECTAR SITIO ACTUAL
+// SITE DETECTION
 // =====================================================
 
-function detectarSitio() {
-    for (const [nombre, config] of Object.entries(SITIOS)) {
-        if (config.detectar()) {
-            console.log(`🌐 Sitio detectado: ${nombre}`);
-            return { nombre, config };
+function detectSite() {
+    for (const [name, config] of Object.entries(SITES)) {
+        if (config.detect()) {
+            console.log(`🌐 Site detected: ${name}`);
+            return { name, config };
         }
     }
-    console.log('🌐 Sitio genérico (usando scraper universal)');
+    console.log('🌐 Generic site — using fallback scraper');
     return null;
 }
 
 // =====================================================
-// ESPERAR A QUE APAREZCAN ELEMENTOS EN EL DOM
+// DOM OBSERVER
+// Waits for product container elements to appear after
+// the page's JavaScript has finished rendering.
 // =====================================================
 
-function esperarElementos(selectores, timeout = 8000) {
+function waitForElements(selectors, timeout = 8000) {
     return new Promise((resolve) => {
-        const selectorString = Array.isArray(selectores) ? selectores.join(', ') : selectores;
+        const selectorStr = Array.isArray(selectors) ? selectors.join(', ') : selectors;
 
-        // Revisar si ya están presentes
-        const existentes = document.querySelectorAll(selectorString);
-        if (existentes.length > 0) {
-            console.log(`✅ Elementos ya presentes: ${existentes.length}`);
-            resolve(existentes);
+        // Elements may already be present
+        const existing = document.querySelectorAll(selectorStr);
+        if (existing.length > 0) {
+            console.log(`✅ Elements already present: ${existing.length}`);
+            resolve(existing);
             return;
         }
 
-        console.log(`⏳ Esperando elementos: ${selectorString}`);
+        console.log(`⏳ Waiting for elements: ${selectorStr}`);
 
         const observer = new MutationObserver(() => {
-            const elementos = document.querySelectorAll(selectorString);
-            if (elementos.length > 0) {
-                console.log(`✅ Elementos detectados tras mutación: ${elementos.length}`);
+            const elements = document.querySelectorAll(selectorStr);
+            if (elements.length > 0) {
+                console.log(`✅ Elements found after DOM mutation: ${elements.length}`);
                 observer.disconnect();
                 clearTimeout(timer);
-                resolve(elementos);
+                resolve(elements);
             }
         });
 
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
+        observer.observe(document.body, { childList: true, subtree: true });
 
         const timer = setTimeout(() => {
             observer.disconnect();
-            const elementos = document.querySelectorAll(selectorString);
-            console.log(`⏰ Timeout. Elementos encontrados: ${elementos.length}`);
-            resolve(elementos);
+            const elements = document.querySelectorAll(selectorStr);
+            console.log(`⏰ Timeout reached. Elements found: ${elements.length}`);
+            resolve(elements);
         }, timeout);
     });
 }
 
 // =====================================================
-// OBTENER TEXTO CON MÚLTIPLES SELECTORES
+// SELECTOR HELPERS
 // =====================================================
 
-function obtenerTexto(elemento, selectores) {
-    for (const sel of selectores) {
-        const el = elemento.querySelector(sel);
-        if (el) {
-            const texto = (el.textContent || el.innerText || '').trim();
-            if (texto.length > 1) return texto;
+function getText(el, selectors) {
+    for (const sel of selectors) {
+        const found = el.querySelector(sel);
+        if (found) {
+            const text = (found.textContent || found.innerText || '').trim();
+            if (text.length > 1) return text;
         }
     }
     return '';
 }
 
-function obtenerAtributo(elemento, selectores, atributo) {
-    for (const sel of selectores) {
-        const el = elemento.querySelector(sel);
-        if (el) {
-            const valor = el.getAttribute(atributo) || '';
-            if (valor) return valor;
-        }
+function getSrc(el, selectors) {
+    for (const sel of selectors) {
+        const found = el.querySelector(sel);
+        if (found) return found.src || found.getAttribute('data-src') || found.getAttribute('data-lazy-src') || '';
     }
     return '';
 }
 
-function obtenerSrc(elemento, selectores) {
-    for (const sel of selectores) {
-        const el = elemento.querySelector(sel);
-        if (el) {
-            return el.src || el.getAttribute('data-src') || el.getAttribute('data-lazy-src') || '';
-        }
-    }
-    return '';
-}
-
-function obtenerHref(elemento, selectores, baseURL = '') {
-    // Si el contenedor mismo es un <a>
-    if (elemento.tagName === 'A') {
-        return elemento.href || '';
-    }
-    for (const sel of selectores) {
-        const el = elemento.querySelector(sel);
-        if (el) {
-            const href = el.href || el.getAttribute('href') || '';
+function getHref(el, selectors, baseURL = '') {
+    if (el.tagName === 'A') return el.href || '';
+    for (const sel of selectors) {
+        const found = el.querySelector(sel);
+        if (found) {
+            const href = found.href || found.getAttribute('href') || '';
             if (href.startsWith('http')) return href;
             if (href.startsWith('/')) return baseURL + href;
         }
@@ -201,200 +147,182 @@ function obtenerHref(elemento, selectores, baseURL = '') {
 }
 
 // =====================================================
-// SCRAPER ESPECÍFICO POR SITIO
+// SITE-SPECIFIC SCRAPER
 // =====================================================
 
-async function scrapearSitioEspecifico(sitio, palabrasClave = '') {
-    const { nombre: nombreSitio, config } = sitio;
-    console.log(`🔍 Scrapeando ${nombreSitio}...`);
+async function scrapeSite(site, keywords = '') {
+    const { name, config } = site;
+    console.log(`🔍 Scraping ${name}...`);
 
-    // Esperar a que los contenedores de producto aparezcan
-    const contenedores = await esperarElementos(config.contenedor);
+    const containers = await waitForElements(config.container);
 
-    if (contenedores.length === 0) {
-        console.log(`⚠️ No se encontraron contenedores en ${nombreSitio}`);
+    if (containers.length === 0) {
+        console.log(`⚠️ No containers found on ${name}`);
         return [];
     }
 
-    const productos = [];
-    const nombresVistos = new Set();
-    const baseURL = config.baseURL();
+    const products   = [];
+    const seen       = new Set();
+    const baseURL    = config.baseURL();
 
-    for (const contenedor of contenedores) {
-        if (productos.length >= 25) break;
+    for (const container of containers) {
+        if (products.length >= 25) break;
 
         try {
-            // Ignorar placeholders o skeletons
-            const clases = contenedor.className || '';
-            if (clases.includes('placeholder') || clases.includes('skeleton') || clases.includes('ghost')) continue;
+            // Skip skeleton / placeholder elements
+            const classes = container.className || '';
+            if (/placeholder|skeleton|ghost/.test(classes)) continue;
 
-            const nombre = obtenerTexto(contenedor, config.nombre);
-            if (!nombre || nombre.length < 5) continue;
+            const name_ = getText(container, config.name);
+            if (!name_ || name_.length < 5) continue;
 
-            // Filtrar por palabras clave si las hay
-            if (palabrasClave) {
-                const palabras = palabrasClave.toLowerCase().split(' ').filter(p => p.length > 2);
-                const textoLower = nombre.toLowerCase();
-                const coincide = palabras.some(p => textoLower.includes(p));
-                if (!coincide) continue;
+            // Keyword filter
+            if (keywords) {
+                const words = keywords.toLowerCase().split(' ').filter(w => w.length > 2);
+                if (!words.some(w => name_.toLowerCase().includes(w))) continue;
             }
 
-            const nombreNorm = nombre.toLowerCase().trim();
-            if (nombresVistos.has(nombreNorm)) continue;
-            nombresVistos.add(nombreNorm);
+            const key = name_.toLowerCase().trim();
+            if (seen.has(key)) continue;
+            seen.add(key);
 
-            const precio = obtenerTexto(contenedor, config.precio) || 'No especificado';
-            const imagen = obtenerSrc(contenedor, config.imagen);
-            const enlace = obtenerHref(contenedor, config.enlace, baseURL);
-
-            productos.push({
-                nombre,
-                precio,
-                imagen,
-                enlace,
-                url: window.location.href,
-                sitio: nombreSitio
+            products.push({
+                nombre: name_,
+                precio: getText(container, config.price) || 'Not specified',
+                imagen: getSrc(container, config.image),
+                enlace: getHref(container, config.link, baseURL),
+                url:    window.location.href,
+                site:   name
             });
 
-            console.log(`  ✅ ${productos.length}: ${nombre.substring(0, 45)}`);
-        } catch (e) {
-            // ignorar elemento con error
-        }
+            console.log(`  ✅ ${products.length}: ${name_.substring(0, 45)}`);
+        } catch (e) { /* skip malformed elements */ }
     }
 
-    console.log(`📦 ${nombreSitio}: ${productos.length} productos extraídos`);
-    return productos;
+    console.log(`📦 ${name}: ${products.length} products extracted`);
+    return products;
 }
 
 // =====================================================
-// SCRAPER GENÉRICO (fallback para otros sitios)
+// GENERIC FALLBACK SCRAPER
+// Used when no site-specific config matches.
 // =====================================================
 
-async function scrapearGenerico(palabrasClave = '') {
-    console.log('🔍 Usando scraper genérico...');
+async function scrapeGeneric(keywords = '') {
+    console.log('🔍 Using generic scraper...');
 
-    const candidatos = document.querySelectorAll('div, article, li, section');
-    const productos = [];
-    const nombresVistos = new Set();
-    let contador = 0;
+    const candidates = document.querySelectorAll('div, article, li, section');
+    const products   = [];
+    const seen       = new Set();
+    let   count      = 0;
 
-    for (const el of candidatos) {
-        if (contador >= 25) break;
+    for (const el of candidates) {
+        if (count >= 25) break;
 
         try {
-            const tieneImagen = el.querySelector('img') !== null;
-            const tieneEnlace = el.querySelector('a') !== null;
-            const texto = el.textContent || '';
-            const tieneTexto = texto.length > 20;
-            const esContenedor = el.children.length >= 2;
-            const patronPrecio = /[\$€£S\/\.]?\s*\d[\d,.]+/;
-            const tienePrecio = patronPrecio.test(texto);
+            const hasImage  = el.querySelector('img') !== null;
+            const hasLink   = el.querySelector('a') !== null;
+            const text      = el.textContent || '';
+            const hasText   = text.length > 20;
+            const isWrapper = el.children.length >= 2;
 
-            if (!(tieneImagen && tieneEnlace && tieneTexto && esContenedor)) continue;
+            if (!(hasImage && hasLink && hasText && isWrapper)) continue;
 
-            if (palabrasClave) {
-                const palabras = palabrasClave.toLowerCase().split(' ').filter(p => p.length > 2);
-                const textoLower = texto.toLowerCase();
-                const coincide = palabras.some(p => textoLower.includes(p));
-                if (!coincide) continue;
+            if (keywords) {
+                const words = keywords.toLowerCase().split(' ').filter(w => w.length > 2);
+                if (!words.some(w => text.toLowerCase().includes(w))) continue;
             }
 
             const heading = el.querySelector('h1,h2,h3,h4,h5,h6');
-            let nombre = heading ? heading.textContent.trim() : '';
+            let name_ = heading ? heading.textContent.trim() : '';
 
-            if (!nombre) {
+            if (!name_) {
                 for (const span of el.querySelectorAll('span,div')) {
                     const t = span.textContent.trim();
-                    if (t.length > 10 && t.length < 200 && !t.includes('\n')) {
-                        nombre = t;
-                        break;
-                    }
+                    if (t.length > 10 && t.length < 200 && !t.includes('\n')) { name_ = t; break; }
                 }
             }
 
-            if (!nombre || nombre.length < 5) continue;
+            if (!name_ || name_.length < 5) continue;
 
-            const nombreNorm = nombre.toLowerCase();
-            if (nombresVistos.has(nombreNorm)) continue;
-            nombresVistos.add(nombreNorm);
+            const key = name_.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
 
-            const precioMatch = texto.match(/[\$€£S\/\.]\s*\d[\d,.]+/);
-            const precio = precioMatch ? precioMatch[0] : 'No especificado';
-            const img = el.querySelector('img');
-            const imagen = img ? (img.src || img.getAttribute('data-src') || '') : '';
-            const aEl = el.querySelector('a');
-            const enlace = aEl ? aEl.href : '';
+            const priceMatch = text.match(/[\$€£S\/\.]\s*\d[\d,.]+/);
+            const img        = el.querySelector('img');
+            const anchor     = el.querySelector('a');
 
-            productos.push({ nombre, precio, imagen, enlace, url: window.location.href, sitio: 'genérico' });
-            contador++;
-        } catch (e) { /* ignorar */ }
+            products.push({
+                nombre: name_,
+                precio: priceMatch ? priceMatch[0] : 'Not specified',
+                imagen: img    ? (img.src || img.getAttribute('data-src') || '') : '',
+                enlace: anchor ? anchor.href : '',
+                url:    window.location.href,
+                site:   'generic'
+            });
+            count++;
+        } catch (e) { /* ignore */ }
     }
 
-    console.log(`📦 Genérico: ${productos.length} productos`);
-    return productos;
+    console.log(`📦 Generic scraper: ${products.length} products`);
+    return products;
 }
 
 // =====================================================
-// FUNCIÓN PRINCIPAL
+// MAIN EXTRACTION FUNCTION
 // =====================================================
 
-async function extraerProductos(palabrasClave = '') {
-    console.log(`🚀 Iniciando extracción | palabras: "${palabrasClave}"`);
+async function extractProducts(keywords = '') {
+    console.log(`🚀 Starting extraction | keywords: "${keywords}"`);
 
-    const sitio = detectarSitio();
+    const site = detectSite();
+    let products = [];
 
-    let productos = [];
+    // Try site-specific scraper first
+    if (site) products = await scrapeSite(site, keywords);
 
-    if (sitio) {
-        productos = await scrapearSitioEspecifico(sitio, palabrasClave);
+    // Fallback to generic scraper
+    if (products.length === 0) {
+        console.log('⚠️ Site-specific scraper returned nothing — trying generic...');
+        products = await scrapeGeneric(keywords);
     }
 
-    // Fallback al scraper genérico si el específico no encontró nada
-    if (productos.length === 0) {
-        console.log('⚠️ Scraper específico sin resultados, usando genérico...');
-        productos = await scrapearGenerico(palabrasClave);
+    // Retry without keyword filter if still empty
+    if (products.length === 0 && keywords) {
+        console.log('⚠️ No results with keyword filter — retrying without filter...');
+        products = site ? await scrapeSite(site, '') : await scrapeGeneric('');
     }
 
-    // Si aún sin resultados y había filtro, intentar sin filtro
-    if (productos.length === 0 && palabrasClave) {
-        console.log('⚠️ Sin resultados con filtro, reintentando sin palabras clave...');
-        productos = sitio
-            ? await scrapearSitioEspecifico(sitio, '')
-            : await scrapearGenerico('');
-    }
-
-    console.log(`✅ Total final: ${productos.length} productos`);
-    return productos;
+    console.log(`✅ Final total: ${products.length} products`);
+    return products;
 }
 
 // =====================================================
-// ESCUCHAR MENSAJES DESDE POPUP
+// MESSAGE LISTENER
+// Receives requests from popup.js via chrome.tabs.sendMessage
 // =====================================================
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extraerProductos') {
-        const palabrasClave = request.palabrasClave || '';
+        const keywords = request.palabrasClave || '';
 
-        extraerProductos(palabrasClave)
-            .then(productos => {
+        extractProducts(keywords)
+            .then(products => {
                 sendResponse({
-                    success: true,
-                    productos,
-                    paginaActual: document.title,
-                    url: window.location.href
+                    success:  true,
+                    productos: products,
+                    pageTitle: document.title,
+                    url:       window.location.href
                 });
             })
             .catch(error => {
-                console.error('❌ Error extracción:', error);
-                sendResponse({
-                    success: false,
-                    error: error.message,
-                    productos: []
-                });
+                console.error('❌ Extraction error:', error);
+                sendResponse({ success: false, error: error.message, productos: [] });
             });
 
-        return true; // Mantener canal abierto para respuesta async
+        return true; // Keep the message channel open for async response
     }
 });
 
-console.log('✅ Content script V4 cargado');
+console.log('✅ Content script loaded — Commerce AI Navigator');

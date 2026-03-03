@@ -1,22 +1,19 @@
 // =====================================================
-// BACKGROUND.JS - Service Worker de la extensión
+// BACKGROUND.JS - Extension Service Worker
+// Runs in the background and handles extension lifecycle events
 // =====================================================
 
-// Este archivo se ejecuta en el fondo y realiza tareas de la extensión
-
-// Se ejecuta cuando la extensión se instala
+// Fires when the extension is first installed or updated
 chrome.runtime.onInstalled.addListener(() => {
-    console.log('✅ Extensión Buscador IA instalada correctamente');
-    
-    // Aquí podrías:
-    // - Abrir una página de bienvenida
-    // - Inicializar configuración
-    // - Crear contexto del menú derecho
+    console.log('✅ Commerce AI Navigator installed successfully');
+
+    // Potential additions:
+    // - Open a welcome/onboarding page
+    // - Initialise default settings in chrome.storage
+    // - Register context menu items
 });
 
-// Escuchar cambios en pestañas
+// Tracks tab switches (available for future use)
 chrome.tabs.onActivated.addListener((activeInfo) => {
-    console.log(`Pestaña activa: ${activeInfo.tabId}`);
+    console.log(`Active tab: ${activeInfo.tabId}`);
 });
-
-// Funciona con permisos y mensajes entre componentes de la extensión
