@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador IA</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 450px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 15px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .header h2 {
+            font-size: 20px;
+            margin: 0;
+        }
+
+        .header p {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .mensaje {
+            padding: 12px 15px;
+            border-radius: 8px;
+            max-width: 85%;
+            word-wrap: break-word;
+            animation: slideIn 0.3s ease-in;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .usuario {
+            background: #667eea;
+            color: white;
+            text-align: right;
+            margin-left: auto;
+            border-radius: 15px 15px 0 15px;
+        }
+
+        .ia {
+            background: #e9ecef;
+            color: #333;
+            border-radius: 15px 15px 15px 0;
+            margin-right: auto;
+        }
+
+        .cargando {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .punto {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: bounce 1.4s ease-in-out infinite;
+        }
+
+        .punto:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .punto:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+            0%, 80%, 100% {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input::placeholder {
+            color: #999;
+        }
+
+        button {
+            padding: 12px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .config-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .config-btn:hover {
+            background: #764ba2;
+        }
+
+        .config-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .config-modal.active {
+            display: flex;
+        }
+
+        .config-content {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .config-content h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .config-content label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-weight: bold;
+        }
+
+        .config-content input {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .config-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .config-buttons button {
+            flex: 1;
+        }
+
+        .delete-btn {
+            background: #dc3545 !important;
+        }
+
+        .delete-btn:hover {
+            background: #c82333 !important;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .api-status {
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        .api-status.configured {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .api-status.not-configured {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* ── Tarjetas de productos ── */
+        .recomendacion-texto {
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 10px;
+            color: #444;
+        }
+
+        .productos-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .producto-card {
+            display: flex;
+            gap: 10px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+            transition: box-shadow 0.2s;
+        }
+
+        .producto-card:hover {
+            box-shadow: 0 4px 12px rgba(102,126,234,0.2);
+        }
+
+        .producto-img-wrap {
+            width: 72px;
+            height: 72px;
+            flex-shrink: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .producto-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .producto-img-placeholder {
+            font-size: 28px;
+        }
+
+        .producto-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .producto-nombre {
+            font-size: 12px;
+            font-weight: 600;
+            color: #222;
+            line-height: 1.3;
+            margin: 0;
+        }
+
+        .producto-razon {
+            font-size: 11px;
+            color: #666;
+            font-style: italic;
+            margin: 0;
+            line-height: 1.3;
+        }
+
+        .producto-precio {
+            font-size: 13px;
+            font-weight: 700;
+            color: #667eea;
+            margin: 0;
+        }
+
+        .producto-btn {
+            display: inline-block;
+            margin-top: 4px;
+            padding: 4px 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: bold;
+            align-self: flex-start;
+            transition: opacity 0.2s;
+        }
+
+        .producto-btn:hover {
+            opacity: 0.85;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button class="config-btn" id="configBtn" title="Configurar API Key">⚙️</button>
+
+        <div class="header">
+            <h2>🔍 Buscador IA</h2>
+            <p>Busca productos inteligentemente</p>
+        </div>
+
+        <!-- Chat principal -->
+        <div class="chat-container" id="chat">
+            <div class="mensaje ia">
+                👋 ¡Hola! Escribe qué producto buscas y exploraré la página para darte las mejores recomendaciones.
+            </div>
+        </div>
+
+        <!-- Input para escribir -->
+        <div class="input-container">
+            <input
+                type="text"
+                id="entrada"
+                placeholder="Ej: regalo para niña de 7 años..."
+                autocomplete="off"
+            >
+            <button id="enviar">Enviar</button>
+        </div>
+    </div>
+
+    <!-- Modal de configuración -->
+    <div class="config-modal" id="configModal">
+        <div class="config-content">
+            <h3>⚙️ Configurar API Key</h3>
+            
+            <div id="apiStatus" class="api-status not-configured">
+                ❌ API Key no configurada
+            </div>
+
+            <label for="apiKeyInput">OpenAI API Key:</label>
+            <input
+                type="password"
+                id="apiKeyInput"
+                placeholder="sk-..."
+            >
+            <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+                Tu API key se guarda localmente en tu navegador (no se envía a servidores externos)
+            </p>
+            <div class="config-buttons">
+                <button id="saveBtn">Guardar</button>
+                <button id="deleteBtn" class="delete-btn">Eliminar</button>
+                <button id="cancelBtn" style="background: #ccc; color: #333;">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
